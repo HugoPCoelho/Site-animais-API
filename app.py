@@ -4,93 +4,106 @@ import sqlite3
 
 app = Flask(__name__)
 
-# Função para conectar ao banco de dados
+# Conexão com o banco de dados
 def get_db_connection():
     conn = sqlite3.connect("sensor_data.db")
-    conn.row_factory = sqlite3.Row
+    conn.row_factory = sqlite3.Row  # Permite acessar colunas por nome
     return conn
 
-# Rota para cadastrar dados (POST)
-@app.route('/api/data', methods=['POST'])
-def receive_data():
+# Rota para cadastrar um funcionário
+@app.route('/api/employees', methods=['POST'])
+def add_employee():
+    data = request.get_json()
+    if not data or 'name' not in data or 'role' not in data or 'email' not in data:
+        return jsonify({"error": "Dados incompletos para cadastrar o funcionário"}), 400
+
     try:
-        # Verifica e processa os dados recebidos
-        data = request.get_json()
-        if not data:
-            return jsonify({"error": "Nenhum dado enviado!"}), 400
-
-        temperature = data.get('temperature')
-        heartbeat = data.get('heartbeat')
-        animal_name = data.get('animal_name')
-        breed = data.get('breed')
-
-        if not all([temperature, heartbeat, animal_name, breed]):
-            return jsonify({"error": "Todos os campos são obrigatórios: temperature, heartbeat, animal_name, breed"}), 400
-
-        # Insere os dados no banco de dados
-        conn = get_db_connection()
-        conn.execute('''
-            INSERT INTO sensor_readings (temperature, heartbeat, animal_name, breed)
-            VALUES (?, ?, ?, ?)
-        ''', (temperature, heartbeat, animal_name, breed))
-        conn.commit()
-        conn.close()
-
-        return jsonify({"message": "Dados armazenados com sucesso!"}), 201
-    except sqlite3.Error as e:
-        return jsonify({"error": f"Erro no banco de dados: {str(e)}"}), 500
+        with get_db_connection() as conn:
+            conn.execute('''
+                INSERT INTO employees (name, role, email)
+                VALUES (?, ?, ?)
+            ''', (data['name'], data['role'], data['email']))
+            conn.commit()
+        return jsonify({"message": "Funcionário cadastrado com sucesso!"}), 201
+    except sqlite3.IntegrityError:
+        return jsonify({"error": "Email já cadastrado"}), 409
     except Exception as e:
-        return jsonify({"error": f"Erro desconhecido: {str(e)}"}), 500
+        return jsonify({"error": str(e)}), 500
 
-# Rota para consultar todos os dados (GET)
-@app.route('/api/data', methods=['GET'])
-def get_data():
+# Rota para cadastrar um animal
+@app.route('/api/animals', methods=['POST'])
+def add_animal():
+    data = request.get_json()
+    if not data or 'name' not in data or 'breed' not in data or 'sensor_id' not in data:
+        return jsonify({"error": "Dados incompletos para cadastrar o animal"}), 400
+
     try:
-        conn = get_db_connection()
-        rows = conn.execute('SELECT * FROM sensor_readings ORDER BY timestamp DESC').fetchall()
-        conn.close()
+        with get_db_connection() as conn:
+            conn.execute('''
+                INSERT INTO animals (name, breed, age, sensor_id)
+                VALUES (?, ?, ?, ?)
+            ''', (data['name'], data['breed'], data.get('age', None), data['sensor_id']))
+            conn.commit()
+        return jsonify({"message": "Animal cadastrado com sucesso!"}), 201
+    except sqlite3.IntegrityError:
+        return jsonify({"error": "Sensor ID não encontrado ou inválido"}), 404
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
-        # Formata os dados para JSON
+# Rota para adicionar uma leitura do sensor
+@app.route('/api/sensor_readings', methods=['POST'])
+def add_sensor_reading():
+    data = request.get_json()
+    if not data or 'temperature' not in data or 'heartbeat' not in data:
+        return jsonify({"error": "Dados incompletos para registrar leitura"}), 400
+
+    try:
+        with get_db_connection() as conn:
+            conn.execute('''
+                INSERT INTO sensor_readings (temperature, heartbeat)
+                VALUES (?, ?)
+            ''', (data['temperature'], data['heartbeat']))
+            conn.commit()
+        return jsonify({"message": "Leitura do sensor registrada com sucesso!"}), 201
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+# Rota para consultar todos os animais e suas leituras de sensores
+@app.route('/api/animals', methods=['GET'])
+def get_animals():
+    try:
+        with get_db_connection() as conn:
+            rows = conn.execute('''
+                SELECT animals.id, animals.name, animals.breed, animals.age,
+                       sensor_readings.temperature, sensor_readings.heartbeat, sensor_readings.timestamp
+                FROM animals
+                LEFT JOIN sensor_readings ON animals.sensor_id = sensor_readings.id
+                ORDER BY animals.id
+            ''').fetchall()
         return jsonify([dict(row) for row in rows]), 200
-    except sqlite3.Error as e:
-        return jsonify({"error": f"Erro no banco de dados: {str(e)}"}), 500
     except Exception as e:
-        return jsonify({"error": f"Erro desconhecido: {str(e)}"}), 500
+        return jsonify({"error": str(e)}), 500
 
-# Rota para atualizar dados por ID (PUT)
-@app.route('/api/data/<int:id>', methods=['PUT'])
-def update_data(id):
+# Rota para consultar todas as leituras de sensores
+@app.route('/api/sensor_readings', methods=['GET'])
+def get_sensor_readings():
     try:
-        data = request.get_json()
-        if not data:
-            return jsonify({"error": "Nenhum dado enviado!"}), 400
-
-        temperature = data.get('temperature')
-        heartbeat = data.get('heartbeat')
-        animal_name = data.get('animal_name')
-        breed = data.get('breed')
-
-        if not all([temperature, heartbeat, animal_name, breed]):
-            return jsonify({"error": "Todos os campos são obrigatórios: temperature, heartbeat, animal_name, breed"}), 400
-
-        conn = get_db_connection()
-        cursor = conn.execute('''
-            UPDATE sensor_readings
-            SET temperature = ?, heartbeat = ?, animal_name = ?, breed = ?
-            WHERE id = ?
-        ''', (temperature, heartbeat, animal_name, breed, id))
-        conn.commit()
-        conn.close()
-
-        if cursor.rowcount == 0:
-            return jsonify({"error": "Nenhum dado encontrado para atualizar."}), 404
-
-        return jsonify({"message": "Dados atualizados com sucesso!"}), 200
-    except sqlite3.Error as e:
-        return jsonify({"error": f"Erro no banco de dados: {str(e)}"}), 500
+        with get_db_connection() as conn:
+            rows = conn.execute('SELECT * FROM sensor_readings ORDER BY timestamp DESC').fetchall()
+        return jsonify([dict(row) for row in rows]), 200
     except Exception as e:
-        return jsonify({"error": f"Erro desconhecido: {str(e)}"}), 500
+        return jsonify({"error": str(e)}), 500
 
-# Inicia o servidor Flask
+# Rota para consultar todos os funcionários
+@app.route('/api/employees', methods=['GET'])
+def get_employees():
+    try:
+        with get_db_connection() as conn:
+            rows = conn.execute('SELECT * FROM employees ORDER BY id').fetchall()
+        return jsonify([dict(row) for row in rows]), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+# Iniciar a API
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000, debug=True)
+    app.run(host='0.0.0.0', port=5000)
