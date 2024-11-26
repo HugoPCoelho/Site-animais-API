@@ -6,7 +6,7 @@ app = Flask(__name__)
 
 # Conexão com o banco de dados
 def get_db_connection():
-    conn = sqlite3.connect("DATABASE_URL")
+    conn = sqlite3.connect("sensor_data.db")
     conn.row_factory = sqlite3.Row  # Permite acessar colunas por nome
     return conn
 
