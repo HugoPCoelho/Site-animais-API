@@ -67,6 +67,11 @@ def add_sensor_reading():
         return jsonify({"message": "Leitura do sensor registrada com sucesso!"}), 201
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+    
+# Rota de inicio
+@app.route('/')
+def home():
+    return "Bem-vindo à API!"
 
 # Rota para consultar todos os animais e suas leituras de sensores
 @app.route('/api/animals', methods=['GET'])
